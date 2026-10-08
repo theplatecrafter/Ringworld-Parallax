@@ -1,0 +1,71 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>7.3</LangVersion>
+    <AssemblyName>Ringworld.Parallax</AssemblyName>
+    <KspRoot Condition="'$(KspRoot)' == ''">$(MSBuildThisFileDirectory)..\..\template_instance</KspRoot>
+    <ManagedPath>$(KspRoot)\KSP_x64_Data\Managed</ManagedPath>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <Version>0.1.0</Version>
+    <RingworldRoot Condition="'$(RingworldRoot)' == ''">$(MSBuildThisFileDirectory)..\..\Ring World KSP</RingworldRoot>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+    <Reference Include="Assembly-CSharp">
+      <HintPath>$(ManagedPath)\Assembly-CSharp.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Assembly-CSharp-firstpass">
+      <HintPath>$(ManagedPath)\Assembly-CSharp-firstpass.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine">
+      <HintPath>$(ManagedPath)\UnityEngine.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.AnimationModule">
+      <HintPath>$(ManagedPath)\UnityEngine.AnimationModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.ImageConversionModule">
+      <HintPath>$(ManagedPath)\UnityEngine.ImageConversionModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.AssetBundleModule">
+      <HintPath>$(ManagedPath)\UnityEngine.AssetBundleModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(ManagedPath)\UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.PhysicsModule">
+      <HintPath>$(ManagedPath)\UnityEngine.PhysicsModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.IMGUIModule">
+      <HintPath>$(ManagedPath)\UnityEngine.IMGUIModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.InputLegacyModule">
+      <HintPath>$(ManagedPath)\UnityEngine.InputLegacyModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.ScreenCaptureModule">
+      <HintPath>$(ManagedPath)\UnityEngine.ScreenCaptureModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="NivenRingworld">
+      <HintPath>$(RingworldRoot)\src\Ringworld.KSP\bin\Release\net472\NivenRingworld.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Ringworld.Core">
+      <HintPath>$(RingworldRoot)\src\Ringworld.KSP\bin\Release\net472\Ringworld.Core.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="KSPTextureLoader"><HintPath>$(KspRoot)\GameData\KSPTextureLoader\Plugins\KSPTextureLoader.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+  <Target Name="CheckGame" BeforeTargets="ResolveReferences" Condition="!Exists('$(ManagedPath)\Assembly-CSharp.dll')">
+    <Error Text="KSP game assemblies missing. Build with -p:KspRoot=path-to-KSP-1.12.5" />
+  </Target>
+</Project>

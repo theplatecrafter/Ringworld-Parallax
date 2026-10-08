@@ -1,0 +1,46 @@
+// Original Ringworld evaluator. No Parallax source/shaders are copied into this bundle.
+// Outputs the matrix/tint buffer interface consumed by separately installed Parallax materials.
+#pragma kernel Cull
+#pragma kernel Finish
+struct Candidate {float4 positionYaw;float4 upSeed;float4 normal;float4 scaleRadius;float4 tint;};
+StructuredBuffer<Candidate> _Candidates;
+RWStructuredBuffer<float4x4> _Lod0;
+RWStructuredBuffer<float4x4> _Lod1;
+RWStructuredBuffer<float4x4> _Lod2;
+RWStructuredBuffer<uint> _Counts;
+RWStructuredBuffer<uint> _Args0;
+RWStructuredBuffer<uint> _Args1;
+RWStructuredBuffer<uint> _Args2;
+float4x4 _LocalToWorld;
+float4 _Planes[6];float3 _Camera;
+float _Range,_Lod1Distance,_Lod2Distance,_Fade,_PatchFade;
+int _Count,_Capacity,_Align;
+float3 Unit(float3 v){return v*rsqrt(max(dot(v,v),1e-12));}
+[numthreads(64,1,1)]
+void Cull(uint3 thread:SV_DispatchThreadID){
+ uint i=thread.x;if(i>=_Count)return;Candidate c=_Candidates[i];
+ float3 at=mul(_LocalToWorld,float4(c.positionYaw.xyz,1)).xyz;
+ float distanceToCamera=distance(at,_Camera);float radius=c.scaleRadius.w;
+ if(distanceToCamera-radius>_Range)return;
+ for(int p=0;p<6;p++)if(dot(_Planes[p].xyz,at)+_Planes[p].w < -radius)return;
+ float visibility=saturate((_Range-distanceToCamera)/max(1,_Range*.15))*_PatchFade;
+ if(c.upSeed.w>visibility)return;
+ float3 up=Unit(mul((float3x3)_LocalToWorld,_Align!=0?c.normal.xyz:c.upSeed.xyz));
+ // Choose a safe reference axis, including exactly antiparallel surface-up directions.
+ float3 reference=abs(up.y)<.9?float3(0,1,0):float3(1,0,0);
+ float3 right=Unit(cross(reference,up));float3 forward=cross(up,right);
+ float yaw=c.positionYaw.w;float sine,cosine;sincos(yaw,sine,cosine);
+ float3 r=(right*cosine-forward*sine)*c.scaleRadius.x;
+ float3 f=(right*sine+forward*cosine)*c.scaleRadius.z;float3 u=up*c.scaleRadius.y;
+ float4x4 transform=float4x4(r.x,u.x,f.x,at.x,r.y,u.y,f.y,at.y,r.z,u.z,f.z,at.z,c.tint.x,c.tint.y,c.tint.z,1);
+ // A deterministic transition chooses one LOD per candidate; no overlapping instances.
+ float t0=saturate((distanceToCamera-_Lod1Distance+_Fade)/max(1,2*_Fade));
+ float t1=saturate((distanceToCamera-_Lod2Distance+_Fade)/max(1,2*_Fade));
+ uint lod=c.upSeed.w<t1?2:(c.upSeed.w<t0?1:0);uint slot;
+ InterlockedAdd(_Counts[lod],1,slot);if(slot>=(uint)_Capacity)return;
+ if(lod==0)_Lod0[slot]=transform;else if(lod==1)_Lod1[slot]=transform;else _Lod2[slot]=transform;
+}
+[numthreads(1,1,1)]
+void Finish(uint3 thread:SV_DispatchThreadID){
+ _Args0[1]=min(_Counts[0],(uint)_Capacity);_Args1[1]=min(_Counts[1],(uint)_Capacity);_Args2[1]=min(_Counts[2],(uint)_Capacity);
+}

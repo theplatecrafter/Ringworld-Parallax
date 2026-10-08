@@ -1,0 +1,17 @@
+ManifestFileVersion: 0
+CRC: 2147507901
+Hashes:
+  AssetFileHash:
+    serializedVersion: 2
+    Hash: 2fb3bb3e2edca63f655b7069741ae543
+  TypeTreeHash:
+    serializedVersion: 2
+    Hash: f1ebb72200b1f78dd7bc1ed693e7a3da
+HashAppended: 0
+ClassTypes:
+- Class: 72
+  Script: {instanceID: 0}
+SerializeReferenceClassIdentifiers: []
+Assets:
+- Assets/Shaders/RingScatter.compute
+Dependencies: []
