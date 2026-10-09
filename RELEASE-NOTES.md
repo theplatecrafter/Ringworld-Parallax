@@ -1,6 +1,10 @@
 # Ringworld Parallax release notes
 
-## Unreleased development 0.1.0
+## 1.0.0 - artifacts prepared October 9, 2026
+
+- Photo mode now waits for the selected preset's scatter population and generates it around the photo camera. Ready objects render fully visible in the scene capture, including new populations that would still be fading into live flight. Resume/Cancel restores custom live distance, density, capacity and generation budgets. Disabled extensions stay disabled; Rotten Potato retains zero density. Temporary photo budgets do not generate physical tree proxies while flight is frozen.
+- Requires the base 1.1.8+ with the optional `IPhotoScatterLayer` handshake. External Parallax Continued/stock scatter asset/KSPTextureLoader/Kopernicus/ModuleManager/KSPBurst dependencies and version targets below remain unchanged; nothing is bundled. No NetKAN edit, package or publication is part of this fix.
+- October 9 photo validation (`ParallaxPhoto-3.log`): all eleven presets applied/restored Parallax budgets without rendering high-budget scenes; a real 512-pixel Slow photo used the ready camera-centred population and produced visible object LOD counts 3/24/41. The saved image contains grass and trees. Time/position stayed frozen, custom-budget Resume/Cancel checks passed, and disabled-extension capture completed without extra bridge draws. The base world/sky capture alignment check also passed with zero angular difference and viewport error 5.96e-8. Core checks: 110,644; placement/configuration checks: 18,050; builds passed without warnings/errors. Normal base/bridge DLLs are installed and original instance settings restored. High-quality/high-resolution desktop photo performance and broader camera-mod coexistence remain unverified.
 
 - Terrain-coloured scatters now receive Ringworld's terrain tint instead of white; this corrects the white Grassland blades while preserving uncoloured profiles' own materials. Texture loading follows shader-declared dimensions, including cubemap refraction properties. Requires the paired base lighting development build; existing external dependencies and ABI requirements are unchanged. Upstream shaders/assets remain unmodified and separately installed.
 - Slow-preset runtime colour validation passed at the reported Grassland coordinates: 439 grass candidates, visible object LOD counts 1/34/98, green-blade close-up capture, and valid shader texture dimensions. The paired base retained consistent lighting over 120 moving camera views. No upstream dependency or asset changes are required.
@@ -15,9 +19,15 @@
 - Shared trunk/leaf parts, replacement-readiness checks, native tree fallback, local contacts and map isolation.
 - Extension controls in the base mod and quality-preset budgets.
 
+### Metadata for the release owner
+
+New identifier: RingworldParallax. Required edges: NivenRingworld min_version 1.1.8; ParallaxContinued version 1.0.4 (the binary/asset layout actually tested); ParallaxContinued-Scatter-Textures version 1.0.0; KSPTextureLoader min_version 1.0.36. Upstream Parallax dependencies supply terrain/planet packs 1.0.0, KSPBurst 1.7.4.11 and KSPBurst-Lite 1.7.4.11 in the tested stack. Do not declare a replacement-config provider or conflicts with the base Ringworld mod. Base should suggest the bridge, not require it. No .netkan/.ckan distribution copies were created and authoritative NetKAN files were not edited.
+
+Only original bridge code/evaluator/configs are included. Parallax Continued and its assets are All Rights Reserved and require separate authorized downloads or explicit author permission for redistribution; local test downloads must not enter standalone release archives.
+
 ### Required dependencies
 
-- **NivenRingworld: matching unpublished bridge branch**, Terrain API v2 and `IScatterProvider` ABI. Published 1.1.7 alone is insufficient. Assign a minimum base release only after that version is chosen and validated.
+- **NivenRingworld >= 1.1.8**, Terrain API v2 and `IScatterProvider` ABI. Base 1.1.7 and earlier are incompatible.
 - **ParallaxContinued**: integration targets public **1.0.4**; other binary/asset layouts are not certified.
 - **ParallaxContinued-Scatter-Textures**: default profiles reference stock asset pack **1.0.0**. Own/community asset profiles can reference other installed scatter definitions.
 - **KSPTextureLoader**: texture loading API supplied by Parallax/Kopernicus's dependency stack.
@@ -30,16 +40,20 @@ Ringworld Clouds, Ringworld Scattering and Cyla remain separate optional base ex
 
 ### Installation and saves
 
-Install into `GameData/RingworldParallax` alongside the matching base. Visual settings are saved per ring. Changing density/preset does not change terrain, science or vessel persistence. Tree contact proxies are temporary nearby physics objects, not persisted parts. Publication and ZIP packaging remain pending.
+Extract from the KSP root into `GameData/RingworldParallax` alongside base >=1.1.8. Visual settings are saved per ring. Changing density/preset does not change terrain, science or vessel persistence. Tree contact proxies are temporary nearby physics objects, not persisted parts. The standalone 1.0.0 ZIP is prepared locally for the owner to upload. Publication has not been performed.
 
 ### Validation
 
-Base/core: 110,581 checks passed. Bridge: 18,029 deterministic placement/biome checks passed. Base and bridge DLLs built without warnings; original D3D11 compute bundle compiled. Installed-Parallax flight/preview regression passed on this laptop at Slow: nine families loaded, all three LOD outputs nonempty, native preview layers absent, map/disable isolation passed. See docs/developers/BRIDGE.md for the log and limits. No complete compatibility or FPS claim is made yet.
+Frozen photo preparation uses a bounded work budget of at least 4 ms per frame at the 15 FPS photo cap, without changing saved live budgets, population limits or selected render quality. The first release recheck reached terrain readiness but timed out with nine scatter patches queued; the corrected rerun passed.
+
+Prior validation: base/core and bridge deterministic placement/biome checks passed. Base and bridge DLLs built without warnings; original D3D11 compute bundle compiled. Installed-Parallax flight/preview regression passed on this laptop at Slow: nine families loaded, all three LOD outputs nonempty, native preview layers absent, map/disable isolation passed. See docs/developers/BRIDGE.md for the log and limits. No complete compatibility or FPS claim is made yet.
 
 ## Parallax-only preview
 
-This development branch defaults **Native scatter fallback** to off while the Parallax extension is enabled. Native trees, grass, rocks, dust/pollen and forest canopy meshes are not generated/rendered; rural buildings, landmarks and megastructures remain. This isolates the bridge result. Enable the fallback toggle in Extensions for comparisons, or disable Parallax to restore native scenery. Asset files are retained for that reversible fallback; none are bundled into the bridge.
+Version 1.0.0 defaults **Native scatter fallback** to off while the Parallax extension is enabled. Native trees, grass, rocks, dust/pollen and forest canopy meshes are not generated/rendered; rural buildings, landmarks and megastructures remain. This isolates the bridge result. Enable the fallback toggle in Extensions for comparisons, or disable Parallax to restore native scenery. Asset files are retained for that reversible fallback; none are bundled into the bridge.
 
 ## Development lighting follow-up
 
 The paired base development build corrects overlapping starlight and scopes Deferred diffuse ambient lighting for ring cameras. The bridge continues to use separately installed Parallax materials; no upstream assets or dependency binaries were changed. The base update also limits retained near terrain during continuous movement and guards stock conic/orbit queries during transfers and debris initialization. Dependencies and publication status remain unchanged. See the base lighting/landing investigation for validation and limits.
+
+Release validation: ParallaxPhoto-release-1.0.0-2.log passed native default suppression, explicit fallback persistence, disabled/absent-provider scopes, all eleven photo-preset budget/restoration checks, real 512-pixel Slow capture (visible object LOD counts 3/24/41), two secondary-camera alignment checks (zero rotation error, viewport error 5.96e-8), frozen flight, Resume/Cancel restoration and disabled-provider capture. All 18,050 placement/biome and 110,644 base/core checks passed. Normal release builds exclude BridgeSmoke and the base smoke harness. No high-preset scene or desktop performance certification is implied.

@@ -12,6 +12,14 @@ Reference models/textures must be installed separately. Custom assets can be reg
 
 ## Data and rendering
 
+Photo capture uses the same scatter evaluator/materials and selected temporary preset budgets. The optional host `IPhotoScatterLayer.PhotoReady` handshake gates frozen scene capture until generation finishes; absent/disabled/unavailable providers do not block it. During photo preparation, the host supplies the photo camera's ring chart instead of the vessel chart. Ready objects bypass their live introduction fade for the captured image. Contact-proxy generation is suspended while time is frozen. The existing settings snapshot restores custom budgets on Resume/Cancel. This handshake requires the base >=1.1.8 and bridge >=1.0.0; it adds no external dependency.
+
+The host capture stack aligns local/far, scaled-space and galaxy views to the actual photo camera. KSP's native scaled camera follows the parent flight-camera rig; directly positioning its child for a test/custom view otherwise leaves different orientations in one image. The scaled-ring observer reference and camera transforms/projections are scoped to capture and restored afterwards.
+
+October 9 verification: `template_instance/ParallaxPhoto-3.log` passed actual photo application/restoration of scatter budgets for all eleven presets, camera-centred readiness, a real 512-pixel Slow capture with visible LOD counts 3/24/41, frozen UT/position, Resume/Cancel and disabled-extension capture without extra bridge draws. A capture-time camera probe measured zero rotation difference and shared-point viewport error 5.96e-8 between local and background views; the native scaled-camera reference restored. The enabled saved image was inspected and contains grass and trees. High-preset scenes were not rendered on this laptop.
+
+Run `tools/VerifyPhoto.ps1` from the bridge directory with KSP closed and the external asset/dependency stack installed. It builds both matching DLLs, runs an isolated save and restores the normal base DLL and backed-up KSP settings in `finally`. `ParallaxPhoto-1.log` is an intermediate fixture failure: the disabled check expected a lifetime capture counter to reset to zero rather than remain unchanged. That assertion was corrected before complete passes in runs 2 and 3. No dependency was added or bundled and no release ZIP was created.
+
 Canonical patches cover approximately 256 m along and exactly 256 m across. The along count covers the circumference exactly, so the key wraps without a partial duplicate seam. Candidate hashing uses ring seed, profile salt and canonical sample indices. Rendered mesh subdivision and frame epochs do not seed placement.
 
 Generation yields between rows within the saved millisecond budget. Near positions project to the base's streamed triangle height; normal filtering uses cylindrical surface up. Patch-local floats are computed after double-precision anchor subtraction. Live matrices apply frame rotation/origin changes. Counts, residency and generation time are bounded.
@@ -41,4 +49,4 @@ Pending release gates: visible-scene image review, motion/LOD/native-fallback ha
 
 ## Parallax-only preview
 
-This development branch defaults **Native scatter fallback** to off while the Parallax extension is enabled. Native trees, grass, rocks, dust/pollen and forest canopy meshes are not generated/rendered; rural buildings, landmarks and megastructures remain. This isolates the bridge result. Enable the fallback toggle in Extensions for comparisons, or disable Parallax to restore native scenery. Asset files are retained for that reversible fallback; none are bundled into the bridge.
+Version 1.0.0 defaults **Native scatter fallback** to off while the Parallax extension is enabled. Native trees, grass, rocks, dust/pollen and forest canopy meshes are not generated/rendered; rural buildings, landmarks and megastructures remain. This isolates the bridge result. Enable the fallback toggle in Extensions for comparisons, or disable Parallax to restore native scenery. Asset files are retained for that reversible fallback; none are bundled into the bridge.

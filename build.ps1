@@ -1,13 +1,15 @@
-param([string]$KspRoot=(Join-Path (Split-Path -Parent $PSScriptRoot) 'template_instance'),[string]$RingworldRoot=(Join-Path (Split-Path -Parent $PSScriptRoot) 'Ring World KSP'),[switch]$Install,[switch]$Package)
+param([string]$KspRoot=(Join-Path (Split-Path -Parent $PSScriptRoot) 'template_instance'),[string]$RingworldRoot=(Join-Path (Split-Path -Parent $PSScriptRoot) 'Ring World KSP'),[switch]$Install,[switch]$Package,[switch]$SmokeTest)
 $ErrorActionPreference='Stop'
+if($Package -and $SmokeTest){throw 'A smoke-test bridge cannot be packaged for release.'}
 & dotnet run --project (Join-Path $PSScriptRoot 'tests/Ringworld.Parallax.Tests.csproj') -c Release
 if($LASTEXITCODE -ne 0){throw 'Placement tests failed.'}
-& dotnet build (Join-Path $PSScriptRoot 'src/Ringworld.Parallax.csproj') -c Release --nologo "-p:KspRoot=$KspRoot" "-p:RingworldRoot=$RingworldRoot"
+& dotnet build (Join-Path $PSScriptRoot 'src/Ringworld.Parallax.csproj') -c Release --nologo "-p:KspRoot=$KspRoot" "-p:RingworldRoot=$RingworldRoot" "-p:SmokeTest=$($SmokeTest.IsPresent.ToString().ToLowerInvariant())"
 if($LASTEXITCODE -ne 0){throw 'Bridge build failed; build the matching base branch first.'}
 $taskStage=Join-Path $PSScriptRoot ('artifacts/stage-'+[Guid]::NewGuid().ToString('N'))
 $taskMod=Join-Path $taskStage 'GameData/RingworldParallax'
 New-Item -ItemType Directory -Path $taskMod -Force | Out-Null
 Copy-Item -Path (Join-Path $PSScriptRoot 'GameData/RingworldParallax/*') -Destination $taskMod -Recurse -Force
+Get-ChildItem -LiteralPath $taskMod -Filter '*.build.json' -Recurse -File | ForEach-Object {Remove-Item -LiteralPath $_.FullName -Force}
 New-Item -ItemType Directory -Path (Join-Path $taskMod 'Plugins') -Force | Out-Null
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'src/bin/Release/net48/Ringworld.Parallax.dll') -Destination (Join-Path $taskMod 'Plugins') -Force
 if(-not(Test-Path -LiteralPath (Join-Path $taskMod 'Assets/ringworldparallax'))){throw 'Build the original bridge evaluator with build-visuals.ps1 first.'}

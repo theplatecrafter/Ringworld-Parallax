@@ -2,6 +2,85 @@ using System;using System.Collections;using System.IO;using UnityEngine;using Ni
 namespace Ringworld.Parallax {
  // Runs only when explicitly requested by the base development smoke harness.
  public static class BridgeSmoke {
+  static void ValidateNativeDefaults(){
+   if(ExtensionProviders.Parallax==null)throw new Exception("Default scatter test requires an installed bridge");
+   var s=Settings.Load();s.Apply(new ConfigNode("OPTIONS"));
+   if(!s.ParallaxExtension||s.ParallaxNativeFallback||s.NativeSurfaceScatters)throw new Exception("Enabled bridge did not suppress native scatters by default");
+   s.ParallaxNativeFallback=true;var copy=Settings.Load();copy.Apply(s.Save());
+   if(!copy.ParallaxNativeFallback||!copy.NativeSurfaceScatters)throw new Exception("Explicit native fallback did not persist");
+   s.ParallaxNativeFallback=false;s.ParallaxExtension=false;
+   if(!s.NativeSurfaceScatters)throw new Exception("Disabling bridge did not restore native scatters");
+   s.ParallaxExtension=true;var provider=ExtensionProviders.Parallax;
+   var field=typeof(ExtensionProviders).GetField("parallax",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Static);
+   try{field.SetValue(null,null);if(!s.NativeSurfaceScatters)throw new Exception("Uninstalled bridge suppressed native scatters");}
+   finally{field.SetValue(null,provider);}
+   Debug.Log("[RingworldSmoke] PASS Parallax native-scatter defaults, explicit saved fallback, disabled and absent bridge scopes");
+  }
+  public static IEnumerator RunPhoto(RingworldFlight f){
+   ValidateNativeDefaults();
+   var provider=ExtensionProviders.Parallax as ParallaxProvider;if(provider==null)throw new Exception("Photo bridge provider missing");
+   var options=f.Settings.Save();RingQualityPresets.Apply(options,6);options.SetValue("parallaxExtension",true,true);options.SetValue("parallaxNativeFallback",false,true);
+   options.SetValue("parallaxRange",300,true);options.SetValue("parallaxDensity","0.15",true);options.SetValue("parallaxMaxObjects",4000,true);f.ApplyOptions(options,true);
+   var start=f.Settings.Geometry.Coordinates(f.Position(FlightGlobals.ActiveVessel));double along=0,across=0;bool found=false;
+   for(int i=0;i<256;i++){
+    double a=start.Along+20000+i*2048,b=start.Across+12000+i*337;var t=f.Settings.Terrain.Sample(a,b);
+    if(t.Biome==Ringworld.Core.Biome.Grassland||t.Biome==Ringworld.Core.Biome.Forest){along=a;across=b;found=true;break;}
+   }
+   if(!found)throw new Exception("Photo vegetation fixture unavailable");
+   f.arrivalHeight=12;typeof(RingworldFlight).GetMethod("VisitCoordinates",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).Invoke(f,new object[]{along,across});while(!f.Ready)yield return null;
+   // Exercise actual photo-setting application/restoration for every preset
+   // without rendering high-budget scenes on the development laptop.
+   for(int i=0;i<RingQualityPresets.Names.Length;i++){
+    var expected=f.Settings.Save();RingQualityPresets.Apply(expected,i);f.PhotoTerrain(true,i);
+    if(f.Settings.ParallaxRange!=double.Parse(expected.GetValue("parallaxRange"),System.Globalization.CultureInfo.InvariantCulture)||f.Settings.ParallaxMaxObjects!=int.Parse(expected.GetValue("parallaxMaxObjects"))||!f.Settings.ParallaxExtension)throw new Exception("Photo preset scatter budgets/switch mismatch: "+i);
+    f.PhotoTerrain(false);
+    if(f.Settings.ParallaxRange!=300||f.Settings.ParallaxDensity!=.15||f.Settings.ParallaxMaxObjects!=4000)throw new Exception("Photo preset did not restore custom live scatter budgets");
+   }
+   Debug.Log("[RingworldSmoke] PASS Parallax photo budgets/restoration across all 11 presets (higher presets not rendered)");
+   var camera=FlightCamera.fetch.mainCamera;var g=f.Settings.Geometry;var at=f.Position(FlightGlobals.ActiveVessel);
+   camera.transform.position=FlightGlobals.ActiveVessel.transform.position+ConvertVector.Unity(g.Up(at)*6-g.AlongDirection(at)*30);
+   camera.transform.rotation=Quaternion.LookRotation(ConvertVector.Unity(g.AlongDirection(at)-g.Up(at)*.06),ConvertVector.Unity(g.Up(at)));
+   double ut=Planetarium.GetUniversalTime();var position=f.Position(FlightGlobals.ActiveVessel);var layer=provider.Current;int captures=layer.PhotoCaptureDraws;
+   var scaled=ScaledCamera.Instance;var originalReference=scaled==null?null:scaled.tgtRef;int alignedCameras=0;float maxAngle=0,maxProjectionError=0;
+   Camera.CameraCallback inspect=c=>{
+    if(!f.visuals.CapturingPhoto||c==camera)return;
+    if(c.name!="GalaxyCamera"&&c.name!="Camera 01"&&(scaled==null||c!=scaled.cam))return;
+    alignedCameras++;maxAngle=Math.Max(maxAngle,Quaternion.Angle(c.transform.rotation,camera.transform.rotation));
+    for(int row=0;row<2;row++)for(int col=0;col<4;col++)maxProjectionError=Math.Max(maxProjectionError,Math.Abs(c.projectionMatrix[row,col]-camera.projectionMatrix[row,col]));
+    if(scaled!=null&&c==scaled.cam){
+     var point=camera.transform.position+camera.transform.forward*1000+camera.transform.right*100+camera.transform.up*200;
+     var near=camera.WorldToViewportPoint(point);var far=c.WorldToViewportPoint((Vector3)ScaledSpace.LocalToScaledSpace(point));
+     maxProjectionError=Math.Max(maxProjectionError,new Vector2(near.x-far.x,near.y-far.y).magnitude);
+    }
+   };Camera.onPreCull+=inspect;
+   try{
+    if(!f.visuals.BeginPhoto(1,6,512))throw new Exception("Parallax photo entry failed: "+f.visuals.Status);
+    if(f.PhotoTerrainReady||f.Settings.ParallaxRange!=600||f.Settings.ParallaxDensity!=.35||f.Settings.ParallaxMaxObjects!=12000)throw new Exception("Selected Slow photo budgets/readiness not applied");
+    float deadline=Time.realtimeSinceStartup+240;
+    while(!f.visuals.PhotoFinished&&Time.realtimeSinceStartup<deadline)yield return null;
+    if(!f.visuals.PhotoFinished||!File.Exists(f.visuals.LastPhoto)||!layer.PhotoReady||layer.PhotoCaptureDraws<=captures)throw new Exception("Photo captured without ready Parallax draw: "+provider.Message+" / "+f.visuals.Status);
+    var counts=layer.Counts();if(counts[0]+counts[1]+counts[2]==0)throw new Exception("Parallax photo camera drew no visible objects");
+    if(Math.Abs(Planetarium.GetUniversalTime()-ut)>.021||(f.Position(FlightGlobals.ActiveVessel)-position).Length>.05)throw new Exception("Parallax photo advanced flight");
+    var chart=g.Coordinates(ConvertVector.Core((Vector3d)camera.transform.position-f.Center));
+    if(!layer.ObserverMatches(chart))throw new Exception("Photo scatters did not use the photo camera chart");
+    if(alignedCameras<2||maxAngle>.01||maxProjectionError>.002)throw new Exception("Photo world/sky camera mismatch: cameras="+alignedCameras+" angle="+maxAngle+" projection="+maxProjectionError);
+    Debug.Log("[RingworldSmoke] PASS actual photo world/sky camera alignment; cameras="+alignedCameras+" angle="+maxAngle+" viewport error="+maxProjectionError);
+    Debug.Log("[RingworldSmoke] PASS Parallax ready population in actual 512-pixel photo capture; visible LODs="+string.Join(",",counts)+" file="+f.visuals.LastPhoto);
+   }finally{Camera.onPreCull-=inspect;f.visuals.EndPhoto();}
+   yield return null;
+   if(scaled!=null&&scaled.tgtRef!=originalReference)throw new Exception("Photo leaked scaled-camera reference");
+   if(f.Settings.ParallaxRange!=300||f.Settings.ParallaxDensity!=.15||f.Settings.ParallaxMaxObjects!=4000||Time.timeScale!=1)throw new Exception("Photo resume did not restore live Parallax settings/time");
+   if(!f.visuals.BeginPhoto(1,6,512))throw new Exception("Parallax photo cancellation entry failed");f.visuals.EndPhoto();yield return null;
+   if(f.Settings.ParallaxRange!=300||f.Settings.ParallaxDensity!=.15||Time.timeScale!=1)throw new Exception("Photo cancellation did not restore Parallax");
+   var disabled=f.Settings.Save();disabled.SetValue("parallaxExtension",false,true);f.ApplyOptions(disabled,false);
+   int disabledCaptures=provider.Current.PhotoCaptureDraws;
+   try{
+    if(!f.visuals.BeginPhoto(1,6,512))throw new Exception("Disabled Parallax photo entry failed");
+    float deadline=Time.realtimeSinceStartup+240;while(!f.visuals.PhotoFinished&&Time.realtimeSinceStartup<deadline)yield return null;
+    if(!f.visuals.PhotoFinished||f.Settings.ParallaxExtension||!provider.Current.PhotoReady||provider.Current.PhotoCaptureDraws!=disabledCaptures)throw new Exception("Disabled bridge enabled or blocked photo capture");
+   }finally{f.visuals.EndPhoto();}
+   Debug.Log("[RingworldSmoke] PASS Parallax photo resume/cancel restoration and disabled-extension capture bypass");
+  }
   public static bool GrassTintReady(){var layer=(ExtensionProviders.Parallax as ParallaxProvider)?.Current;return layer!=null&&layer.CandidatesFor("grass")>0&&layer.HasTerrainTint("grass");}
   public static void ValidateTint(){
    var layer=(ExtensionProviders.Parallax as ParallaxProvider)?.Current;if(layer==null||!GrassTintReady())throw new Exception("Grass does not carry terrain tint");
@@ -71,6 +150,7 @@ namespace Ringworld.Parallax {
    Debug.Log("[RingworldSmoke] PASS 13 biome policies / "+count+" installed asset profiles / all three object LODs loaded");
   }
   public static IEnumerator Run(RingworldFlight f){
+   ValidateNativeDefaults();
    var provider=ExtensionProviders.Parallax as ParallaxProvider;if(provider==null)throw new Exception("Bridge provider not discovered");
    var options=f.Settings.Save();RingQualityPresets.Apply(options,6);options.SetValue("atmosphereBackend",0,true);f.ApplyOptions(options,true);
    var start=f.Settings.Terrain.Landmarks[0];double along=start.Along+20000,across=start.Across+12000;

@@ -7,7 +7,7 @@ namespace Ringworld.Parallax {
   internal IEnumerator Work;internal GameObject ColliderRoot;internal readonly Dictionary<int,Collider> Colliders=new Dictionary<int,Collider>();
   public void Dispose(){Retired=true;(Work as IDisposable)?.Dispose();Work=null;Input?.Dispose();Input=null;if(ColliderRoot!=null)UnityEngine.Object.Destroy(ColliderRoot);Colliders.Clear();}
  }
- internal sealed class Layer : IScatterLayer {
+ internal sealed class Layer : IScatterLayer, IPhotoScatterLayer {
   readonly Settings settings;readonly List<Profile> profiles;readonly Dictionary<string,Patch> patches=new Dictionary<string,Patch>();
   readonly Dictionary<Profile,GpuFamily> families=new Dictionary<Profile,GpuFamily>();readonly Queue<Patch> pending=new Queue<Patch>();
   readonly ParallaxProvider owner;readonly List<Profile> treeProfiles;ComputeShader shader;AssetBundle bundle;
@@ -15,6 +15,10 @@ namespace Ringworld.Parallax {
   DVec observer;RingPoint point;int resident;internal int PatchCount{get{return patches.Count;}}internal int Resident{get{return resident;}}
   readonly Collider[] clearance=new Collider[16];
   internal IEnumerable<Profile> Profiles{get{return profiles;}}
+  bool PhotoActive{get{return RingworldFlight.Instance?.visuals?.PhotoActive==true;}}
+  public bool PhotoReady{get{return !Enabled||pending.Count==0;}}
+  internal int PhotoCaptureDraws{get;private set;}
+  internal bool ObserverMatches(RingPoint chart){return Math.Abs(settings.Geometry.AlongDistance(point.Along,chart.Along))<.1&&Math.Abs(point.Across-chart.Across)<.1;}
   internal Layer(Settings s,ParallaxProvider provider){settings=s;owner=provider;profiles=Profile.Load(s.RingId);treeProfiles=profiles.Where(p=>p.Tree).ToList();Camera.onPreCull+=Render;}
   internal bool Enabled{get{return !disposed&&!faulted&&initialized&&settings.ParallaxExtension&&settings.ParallaxDensity>0&&StockGraphics.Scatter>0&&RingworldFlight.Instance!=null&&RingworldFlight.Instance.Active&&!MapView.MapIsEnabled;}}
   bool Initialize(){
@@ -24,15 +28,15 @@ namespace Ringworld.Parallax {
     var template=bundle==null?null:bundle.LoadAsset<ComputeShader>("Assets/Shaders/RingScatter.compute");if(template==null||!SystemInfo.supportsComputeShaders||!SystemInfo.supportsInstancing)throw new Exception("Bridge compute bundle or GPU capability unavailable.");
     shader=UnityEngine.Object.Instantiate(template);
     foreach(var p in profiles){
-     var source=all.FirstOrDefault(x=>Native.S(x,"scatterName")==p.Source);if(source==null){owner.Message="Missing scatter "+p.Source+"; native fallback retained.";Debug.LogWarning("[RingworldParallax] "+owner.Message);continue;}
+     var source=all.FirstOrDefault(x=>Native.S(x,"scatterName")==p.Source);if(source==null){owner.Message="Missing scatter "+p.Source+"; enable native fallback if needed.";Debug.LogWarning("[RingworldParallax] "+owner.Message);continue;}
      try{p.Assets=new Resources(source,all);families[p]=new GpuFamily(p,shader,Math.Max(1,settings.ParallaxMaxObjects/Math.Max(1,profiles.Count*3)));}
      catch(Exception e){p.Assets?.Dispose();p.Assets=null;Debug.LogError("[RingworldParallax] "+p.Id+" unavailable: "+e.Message);}
     }
-    initialized=families.Count>0;lastLimit=settings.ParallaxMaxObjects;owner.Message=initialized?"Active: "+families.Count+" biome scatter families, installed Parallax materials.":"No usable Parallax assets; native fallback retained.";
+    initialized=families.Count>0;lastLimit=settings.ParallaxMaxObjects;owner.Message=initialized?"Active: "+families.Count+" biome scatter families, installed Parallax materials.":"No usable Parallax assets; enable native fallback if needed.";
     Debug.Log("[RingworldParallax] "+owner.Message);return initialized;
    }catch(Exception e){Fail(e);return false;}
   }
-  void Fail(Exception e){faulted=true;owner.Message="Native fallback: "+e.Message;Debug.LogError("[RingworldParallax] "+e);ClearPatches();}
+  void Fail(Exception e){faulted=true;owner.Message="Bridge unavailable; enable native fallback: "+e.Message;Debug.LogError("[RingworldParallax] "+e);ClearPatches();}
   public void Update(DVec cameraObserver){
    if(disposed||faulted)return;observer=cameraObserver;point=settings.Geometry.Coordinates(observer);
    if(!settings.ParallaxExtension||settings.ParallaxDensity<=0||StockGraphics.Scatter<=0){ClearPatches();return;}
@@ -43,12 +47,18 @@ namespace Ringworld.Parallax {
     long count=Placement.AlongCells(settings.Geometry.P.Circumference);double width=settings.Geometry.P.Circumference/count;
     long x=(long)Math.Floor(point.Along/width),y=(long)Math.Floor(point.Across/Placement.PatchSize);
     if(x!=lastX||y!=lastY||lastRange!=settings.ParallaxRange){Plan(x,y,count,width);lastX=x;lastY=y;lastRange=settings.ParallaxRange;}
+    // Frozen photographs do not share their frame budget with flight physics.
+    // Keep preparation progressing at the 15 FPS photo limit without changing
+    // the selected live budget, population limit or rendering quality.
+    double workBudget=PhotoActive?Math.Max(4,settings.ParallaxBudget):settings.ParallaxBudget;
     var clock=Stopwatch.StartNew();int iterations=0;
-    while(pending.Count>0&&clock.Elapsed.TotalMilliseconds<settings.ParallaxBudget&&iterations++<128){
+    while(pending.Count>0&&clock.Elapsed.TotalMilliseconds<workBudget&&iterations++<128){
      var p=pending.Peek();if(p.Retired){pending.Dequeue();continue;}
      if(!p.Work.MoveNext()){pending.Dequeue();(p.Work as IDisposable)?.Dispose();p.Work=null;}
     }
-    if(Time.unscaledTime>=nextColliders){nextColliders=Time.unscaledTime+.3f;Contacts();}
+    // Flight is frozen during photography. Do not create physical tree
+    // proxies for temporary photo budgets; live contacts resume afterwards.
+    if(!PhotoActive&&Time.unscaledTime>=nextColliders){nextColliders=Time.unscaledTime+.3f;Contacts();}
     owner.Message="Parallax: "+families.Count+" families / "+patches.Count+" patches / "+resident+" candidates / "+pending.Count+" pending";
    }catch(Exception e){Fail(e);}
   }
@@ -139,9 +149,10 @@ namespace Ringworld.Parallax {
    try{
     var worldObserver=settings.Center+ConvertVector.Ksp(observer);var bounds=new Bounds((Vector3)worldObserver,Vector3.one*(float)(settings.ParallaxRange*2+1024));
     foreach(var family in families.Values){family.Begin(camera);
-     foreach(var p in patches.Values)if(p.Profile==family.Profile&&p.Ready&&p.Input!=null&&(!p.Profile.Tree||!settings.ParallaxNativeFallback||TreePatchOwned(p)))family.Evaluate(p.Input,p.Candidates.Length,Matrix(p),(float)Range(p.Profile),p.Profile.Tree&&settings.ParallaxNativeFallback?1:Mathf.Clamp01((Time.unscaledTime-p.Born)/.75f));
+     foreach(var p in patches.Values)if(p.Profile==family.Profile&&p.Ready&&p.Input!=null&&(!p.Profile.Tree||!settings.ParallaxNativeFallback||TreePatchOwned(p)))family.Evaluate(p.Input,p.Candidates.Length,Matrix(p),(float)Range(p.Profile),PhotoActive||p.Profile.Tree&&settings.ParallaxNativeFallback?1:Mathf.Clamp01((Time.unscaledTime-p.Born)/.75f));
      family.Draw(camera,bounds,settings.ForestQuality>0&&QualitySettings.shadows!=ShadowQuality.Disable);
     }
+    if(flight.visuals!=null&&flight.visuals.CapturingPhoto)PhotoCaptureDraws++;
    }catch(Exception e){Fail(e);}
   }
   void Contacts(){
