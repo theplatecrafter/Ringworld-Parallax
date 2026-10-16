@@ -5,8 +5,10 @@ namespace Ringworld.Parallax {
  internal sealed class GpuFamily : IDisposable {
   internal readonly Profile Profile;internal readonly ComputeBuffer[] Output=new ComputeBuffer[3];
   internal readonly List<ComputeBuffer[]> Arguments=new List<ComputeBuffer[]>();
+  internal readonly List<Patch> Patches=new List<Patch>();
+  static readonly uint[] zeroCounts=new uint[3];internal bool HasOutput;
   readonly ComputeBuffer counts;readonly ComputeShader shader;readonly int cull,finish,capacity;
-  internal int[] LastCounts(){var data=new uint[3];counts.GetData(data);return new[]{(int)Math.Min(data[0],capacity),(int)Math.Min(data[1],capacity),(int)Math.Min(data[2],capacity)};}
+  internal int[] LastCounts(){if(!HasOutput)return new int[3];var data=new uint[3];counts.GetData(data);return new[]{(int)Math.Min(data[0],capacity),(int)Math.Min(data[1],capacity),(int)Math.Min(data[2],capacity)};}
   internal GpuFamily(Profile profile,ComputeShader shader,int capacity){
    Profile=profile;this.shader=shader;this.capacity=capacity;cull=shader.FindKernel("Cull");finish=shader.FindKernel("Finish");
    try{
@@ -17,9 +19,9 @@ namespace Ringworld.Parallax {
     }}
    }catch{Dispose();throw;}
   }
-  internal void Begin(Camera camera){
-   counts.SetData(new uint[3]);shader.SetInt("_Capacity",capacity);shader.SetVector("_Camera",camera.transform.position);
-   var planes=GeometryUtility.CalculateFrustumPlanes(camera);var values=new Vector4[6];for(int i=0;i<6;i++)values[i]=new Vector4(planes[i].normal.x,planes[i].normal.y,planes[i].normal.z,planes[i].distance);shader.SetVectorArray("_Planes",values);
+  internal void Begin(Camera camera,Vector4[] planes){
+   HasOutput=true;counts.SetData(zeroCounts);shader.SetInt("_Capacity",capacity);shader.SetVector("_Camera",camera.transform.position);
+   shader.SetVectorArray("_Planes",planes);
    shader.SetBuffer(cull,"_Counts",counts);shader.SetBuffer(cull,"_Lod0",Output[0]);shader.SetBuffer(cull,"_Lod1",Output[1]);shader.SetBuffer(cull,"_Lod2",Output[2]);
    shader.SetInt("_Align",Profile.Assets.Align?1:0);
   }

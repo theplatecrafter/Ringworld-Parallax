@@ -2,7 +2,7 @@
 
 Biome-aware Parallax Continued scatter assets on Niven's Ringworld's cylindrical terrain.
 
-Version **1.0.0**, prepared locally for release. Requires **Niven Ringworld >= 1.1.8**, the scatter-provider ABI and Terrain API v2. Base 1.1.7 and earlier are incompatible.
+Version **1.0.1**, prepared locally for release. Requires **Niven Ringworld >= 1.1.8**, the scatter-provider ABI and Terrain API v2. Base 1.1.7 and earlier are incompatible.
 
 The bridge uses **separately installed Parallax Continued models, textures and materials**. Ringworld supplies deterministic placement, cylindrical height/up, streaming, bounded GPU culling, three object LODs and nearby tree-trunk proxies. Shared trunk/leaf scatters use the same transforms. The GPU evaluator is original Ringworld code; Parallax source and asset bundles are not included.
 
@@ -10,7 +10,7 @@ The bridge shows Parallax scatter objects by default. Native vegetation can be r
 
 ## Installation
 
-Install Niven Ringworld 1.1.8 or newer, then this extension into `GameData/RingworldParallax`. Install Parallax Continued and its dependencies separately. See [installation and settings](docs/guides/GETTING-STARTED.md), [release/dependency notes](RELEASE-NOTES.md), and [configuration and implementation](docs/developers/BRIDGE.md).
+Install Niven Ringworld 1.1.8 or newer, then this extension into `GameData/RingworldParallax`. Install Parallax Continued and its dependencies separately. Set KSP's main-menu **Terrain Detail to High** as Parallax requires; Ringworld's own preset can remain Slow or lower. See [installation and settings](docs/guides/GETTING-STARTED.md), [release/dependency notes](RELEASE-NOTES.md), and [configuration and implementation](docs/developers/BRIDGE.md).
 
 Installed supported extensions are enabled by default. Open **Ringworld ? Extensions ? Ringworld Parallax** for density, distance, object/generation budgets and nearby contacts. Quality presets adjust those budgets; disabling the extension restores native vegetation. Rotten Potato uses zero Parallax density.
 

@@ -4,6 +4,7 @@ namespace Ringworld.Parallax {
  internal sealed class Patch : IDisposable {
   internal long X,Y;internal Profile Profile;internal DVec Anchor;internal double Phase,Along,Across,Width;
   internal bool Ready,Retired;internal ComputeBuffer Input;internal Candidate[] Candidates;internal float Born;
+  internal Bounds LocalBounds;
   internal IEnumerator Work;internal GameObject ColliderRoot;internal readonly Dictionary<int,Collider> Colliders=new Dictionary<int,Collider>();
   public void Dispose(){Retired=true;(Work as IDisposable)?.Dispose();Work=null;Input?.Dispose();Input=null;if(ColliderRoot!=null)UnityEngine.Object.Destroy(ColliderRoot);Colliders.Clear();}
  }
@@ -14,6 +15,7 @@ namespace Ringworld.Parallax {
   bool initialized,disposed,faulted;long lastX=long.MinValue,lastY;double lastRange=-1,lastDensity=-1;int lastLimit;float nextRetry,nextColliders;
   DVec observer;RingPoint point;int resident;internal int PatchCount{get{return patches.Count;}}internal int Resident{get{return resident;}}
   readonly Collider[] clearance=new Collider[16];
+  readonly Plane[] frustum=new Plane[6];readonly Vector4[] planeVectors=new Vector4[6];readonly List<Vector3> nearbyVessels=new List<Vector3>();
   internal IEnumerable<Profile> Profiles{get{return profiles;}}
   bool PhotoActive{get{return RingworldFlight.Instance?.visuals?.PhotoActive==true;}}
   public bool PhotoReady{get{return !Enabled||pending.Count==0;}}
@@ -38,6 +40,13 @@ namespace Ringworld.Parallax {
   }
   void Fail(Exception e){faulted=true;owner.Message="Bridge unavailable; enable native fallback: "+e.Message;Debug.LogError("[RingworldParallax] "+e);ClearPatches();}
   public void Update(DVec cameraObserver){
+#if RINGWORLD_FRAME_PROFILING
+   long profile=RingPerformance.Begin();try{Populate(cameraObserver);}finally{RingPerformance.End(RingPerformance.Section.ParallaxPopulate,profile);}
+#else
+   Populate(cameraObserver);
+#endif
+  }
+  void Populate(DVec cameraObserver){
    if(disposed||faulted)return;observer=cameraObserver;point=settings.Geometry.Coordinates(observer);
    if(!settings.ParallaxExtension||settings.ParallaxDensity<=0||StockGraphics.Scatter<=0){ClearPatches();return;}
    if(!initialized){if(Time.unscaledTime<nextRetry)return;nextRetry=Time.unscaledTime+2;if(!Initialize())return;}
@@ -63,8 +72,9 @@ namespace Ringworld.Parallax {
    }catch(Exception e){Fail(e);}
   }
   static string Key(Profile profile,long x,long y){return profile.Id+":"+x+":"+y;}
+  struct PlannedPatch {internal long X,Y;internal Profile Profile;internal double Along,Across,Width,Distance;}
   void Plan(long x,long y,long count,double width){
-   var wanted=new HashSet<string>();var incoming=new List<Patch>();
+   var wanted=new HashSet<string>();var incoming=new List<PlannedPatch>();
    foreach(var profile in families.Keys){
     double range=Range(profile);int n=(int)Math.Ceiling((range+Placement.PatchSize)/Placement.PatchSize);
     for(int dy=-n;dy<=n;dy++)for(int dx=-n;dx<=n;dx++){
@@ -73,14 +83,14 @@ namespace Ringworld.Parallax {
      double da=settings.Geometry.AlongDistance(a+width/2,point.Along),db=b+Placement.PatchSize/2-point.Across;
      if(da*da+db*db>(range+400)*(range+400))continue;
      string key=Key(profile,px,py);wanted.Add(key);if(patches.ContainsKey(key))continue;
-     incoming.Add(new Patch{X=px,Y=py,Profile=profile,Along=a,Across=b,Width=width});
+     incoming.Add(new PlannedPatch{X=px,Y=py,Profile=profile,Along=a,Across=b,Width=width,Distance=da*da+db*db});
     }
    }
    // Retire distant cells only; neighbouring ready patches remain live while new cells build.
-   foreach(var key in patches.Keys.ToArray())if(!wanted.Contains(key)){var p=patches[key];resident-=p.Candidates==null?0:p.Candidates.Length;p.Dispose();patches.Remove(key);}
-   incoming.Sort((a,b)=>Distance(a).CompareTo(Distance(b)));
+   foreach(var key in patches.Keys.ToArray())if(!wanted.Contains(key)){var p=patches[key];resident-=p.Candidates==null?0:p.Candidates.Length;families[p.Profile].Patches.Remove(p);p.Dispose();patches.Remove(key);}
+   incoming.Sort((a,b)=>a.Distance.CompareTo(b.Distance));
    int maxPatches=Math.Min(4096,Math.Max(128,settings.ParallaxMaxObjects/64));
-   foreach(var p in incoming){if(patches.Count>=maxPatches)break;patches.Add(Key(p.Profile,p.X,p.Y),p);p.Work=Build(p);pending.Enqueue(p);}
+   foreach(var item in incoming){if(patches.Count>=maxPatches)break;var p=new Patch{X=item.X,Y=item.Y,Profile=item.Profile,Along=item.Along,Across=item.Across,Width=item.Width};patches.Add(Key(p.Profile,p.X,p.Y),p);families[p.Profile].Patches.Add(p);p.Work=Build(p);pending.Enqueue(p);}
   }
   double Distance(Patch p){double a=settings.Geometry.AlongDistance(p.Along+p.Width*.5,point.Along),b=p.Across+128-point.Across;return a*a+b*b;}
   double Range(Profile p){return p.Tree?settings.ParallaxRange:Math.Min(p.Range,settings.ParallaxRange);}
@@ -123,10 +133,14 @@ namespace Ringworld.Parallax {
     yield return null;if(resident+candidates.Count>=settings.ParallaxMaxObjects*4)break;
    }
    if(p.Retired)yield break;
-   p.Candidates=candidates.ToArray();if(candidates.Count>0){p.Input=new ComputeBuffer(candidates.Count,80);p.Input.SetData(p.Candidates);}
+   p.Candidates=candidates.ToArray();if(candidates.Count>0){
+    var first=candidates[0];p.LocalBounds=new Bounds(first.PositionYaw,Vector3.one*(first.ScaleRadius.w*2+.02f));
+    foreach(var candidate in candidates)p.LocalBounds.Encapsulate(new Bounds(candidate.PositionYaw,Vector3.one*(candidate.ScaleRadius.w*2+.02f)));
+    p.Input=new ComputeBuffer(candidates.Count,80);p.Input.SetData(p.Candidates);}
    resident+=candidates.Count;p.Ready=true;p.Born=Time.unscaledTime;
   }
-  internal Matrix4x4 Matrix(Patch p){double delta=settings.Geometry.OrientationRadians-p.Phase;return Matrix4x4.TRS((Vector3)(settings.Center+ConvertVector.Ksp(settings.Geometry.RotateAroundAxis(p.Anchor,delta))),settings.AxisRotation(delta),Vector3.one);}
+  internal Matrix4x4 Matrix(Patch p){return Matrix(p,settings.Center);}
+  Matrix4x4 Matrix(Patch p,Vector3d center){double delta=settings.Geometry.OrientationRadians-p.Phase;return Matrix4x4.TRS((Vector3)(center+ConvertVector.Ksp(settings.Geometry.RotateAroundAxis(p.Anchor,delta))),settings.AxisRotation(delta),Vector3.one);}
   internal bool TreePatchOwned(Patch patch){return OwnsTrees(patch.Along,patch.Across,patch.Width);}
   public bool OwnsTrees(double a,double b,double size){
    if(!Enabled||treeProfiles.Count==0||treeProfiles.Any(p=>p.Assets==null))return false;
@@ -142,21 +156,63 @@ namespace Ringworld.Parallax {
    }return true;
   }
   void Render(Camera camera){
+#if RINGWORLD_FRAME_PROFILING
+   long profile=RingPerformance.Begin();try{RenderCamera(camera);}finally{RingPerformance.End(RingPerformance.Section.ParallaxRender,profile);}
+#else
+   RenderCamera(camera);
+#endif
+  }
+  void RenderCamera(Camera camera){
    if(!Enabled||camera==null||camera==PlanetariumCamera.Camera||!HighLogic.LoadedSceneIsFlight)return;
    var flight=RingworldFlight.Instance;if(flight==null||flight.Settings!=settings)return;
    // Only exterior flight/photo cameras; skip reflection, IVA and UI cameras.
    if(camera!=FlightCamera.fetch?.mainCamera&&camera.name.IndexOf("Ringworld photo",StringComparison.OrdinalIgnoreCase)<0)return;
    try{
     var worldObserver=settings.Center+ConvertVector.Ksp(observer);var bounds=new Bounds((Vector3)worldObserver,Vector3.one*(float)(settings.ParallaxRange*2+1024));
-    foreach(var family in families.Values){family.Begin(camera);
-     foreach(var p in patches.Values)if(p.Profile==family.Profile&&p.Ready&&p.Input!=null&&(!p.Profile.Tree||!settings.ParallaxNativeFallback||TreePatchOwned(p)))family.Evaluate(p.Input,p.Candidates.Length,Matrix(p),(float)Range(p.Profile),PhotoActive||p.Profile.Tree&&settings.ParallaxNativeFallback?1:Mathf.Clamp01((Time.unscaledTime-p.Born)/.75f));
-     family.Draw(camera,bounds,settings.ForestQuality>0&&QualitySettings.shadows!=ShadowQuality.Disable);
-    }
+    DrawFamilies(camera,bounds,true);
     if(flight.visuals!=null&&flight.visuals.CapturingPhoto)PhotoCaptureDraws++;
    }catch(Exception e){Fail(e);}
   }
+  internal int SubmittedPatches{get;private set;}internal int RejectedPatches{get;private set;}
+  void DrawFamilies(Camera camera,Bounds bounds,bool cull){
+   GeometryUtility.CalculateFrustumPlanes(camera,frustum);for(int i=0;i<6;i++)planeVectors[i]=new Vector4(frustum[i].normal.x,frustum[i].normal.y,frustum[i].normal.z,frustum[i].distance);
+   var center=settings.Center;var cameraPosition=camera.transform.position;SubmittedPatches=RejectedPatches=0;
+   foreach(var family in families.Values){
+    family.HasOutput=false;bool started=false;
+    foreach(var p in family.Patches){
+     if(!p.Ready||p.Input==null||p.Profile.Tree&&settings.ParallaxNativeFallback&&!TreePatchOwned(p))continue;
+     var matrix=Matrix(p,center);float range=(float)Range(p.Profile);var local=p.LocalBounds;var e=local.extents;
+     var ext=new Vector3(Mathf.Abs(matrix.m00)*e.x+Mathf.Abs(matrix.m01)*e.y+Mathf.Abs(matrix.m02)*e.z,Mathf.Abs(matrix.m10)*e.x+Mathf.Abs(matrix.m11)*e.y+Mathf.Abs(matrix.m12)*e.z,Mathf.Abs(matrix.m20)*e.x+Mathf.Abs(matrix.m21)*e.y+Mathf.Abs(matrix.m22)*e.z);
+     var world=new Bounds(matrix.MultiplyPoint3x4(local.center),ext*2+Vector3.one*.02f);
+     if(cull&&(!GeometryUtility.TestPlanesAABB(frustum,world)||world.SqrDistance(cameraPosition)>range*range)){RejectedPatches++;continue;}
+     if(!started){family.Begin(camera,planeVectors);started=true;}
+     family.Evaluate(p.Input,p.Candidates.Length,matrix,range,PhotoActive||p.Profile.Tree&&settings.ParallaxNativeFallback?1:Mathf.Clamp01((Time.unscaledTime-p.Born)/.75f));SubmittedPatches++;
+    }
+    if(started)family.Draw(camera,bounds,settings.ForestQuality>0&&QualitySettings.shadows!=ShadowQuality.Disable);
+   }
+  }
+#if RINGWORLD_PARALLAX_SMOKE
+  internal void VerifyCulling(Camera camera){
+   var bounds=new Bounds((Vector3)(settings.Center+ConvertVector.Ksp(observer)),Vector3.one*(float)(settings.ParallaxRange*2+1024));
+   var rotation=camera.transform.rotation;int total=0;
+   try{for(int i=0;i<4;i++){
+    var up=ConvertVector.Unity(settings.Geometry.Up(observer));var direction=Quaternion.AngleAxis(i*90,up)*ConvertVector.Unity(settings.Geometry.AlongDirection(observer));camera.transform.rotation=Quaternion.LookRotation(direction-up*.15f,up);
+    DrawFamilies(camera,bounds,false);var reference=Counts();DrawFamilies(camera,bounds,true);var actual=Counts();
+    if(!reference.SequenceEqual(actual))throw new Exception("CPU patch culling changed GPU object LOD counts: "+string.Join(",",reference)+" / "+string.Join(",",actual));
+    total+=actual.Sum();Debug.Log("[RingworldSmoke] PASS Parallax CPU/GPU culling equivalence view="+i+" counts="+string.Join(",",actual)+" submitted="+SubmittedPatches+" rejected="+RejectedPatches);
+   }}finally{camera.transform.rotation=rotation;}
+   if(total==0)throw new Exception("Culling equivalence did not exercise visible objects");
+  }
+#endif
   void Contacts(){
-   var f=RingworldFlight.Instance;if(f==null)return;var nearby=FlightGlobals.VesselsLoaded.Where(v=>v!=null&&f.Owns(v)).Select(v=>(Vector3)v.transform.position).ToArray();int budget=0;
+#if RINGWORLD_FRAME_PROFILING
+   long profile=RingPerformance.Begin();try{UpdateContacts();}finally{RingPerformance.End(RingPerformance.Section.ParallaxContacts,profile);}
+#else
+   UpdateContacts();
+#endif
+  }
+  void UpdateContacts(){
+   var f=RingworldFlight.Instance;if(f==null)return;nearbyVessels.Clear();foreach(var vessel in FlightGlobals.VesselsLoaded)if(vessel!=null&&f.Owns(vessel))nearbyVessels.Add(vessel.transform.position);int budget=0;
    foreach(var p in patches.Values){
     if(!p.Ready||!p.Profile.Tree)continue;
     bool enabled=Enabled&&settings.ParallaxColliders&&TreePatchOwned(p);
@@ -165,7 +221,8 @@ namespace Ringworld.Parallax {
     if(p.ColliderRoot==null){p.ColliderRoot=new GameObject("Parallax ring tree contacts");p.ColliderRoot.layer=15;}
     var m=Matrix(p);p.ColliderRoot.transform.position=m.GetColumn(3);p.ColliderRoot.transform.rotation=settings.AxisRotation(settings.Geometry.OrientationRadians-p.Phase);
     for(int i=0;i<p.Candidates.Length;i++){
-     var c=p.Candidates[i];var position=m.MultiplyPoint3x4(c.PositionYaw);bool inRange=nearby.Any(v=>(v-position).sqrMagnitude<80*80&&(v-position).sqrMagnitude>18*18);
+     var c=p.Candidates[i];var position=m.MultiplyPoint3x4(c.PositionYaw);bool inRange=false;
+     foreach(var vessel in nearbyVessels){float distance=(vessel-position).sqrMagnitude;if(distance<80*80&&distance>18*18){inRange=true;break;}}
      Collider contact;if(p.Colliders.TryGetValue(i,out contact)){contact.enabled=inRange;continue;}
      if(!inRange||budget++>=128)continue;
      var go=new GameObject("Ringworld tree trunk");go.layer=15;go.transform.SetParent(p.ColliderRoot.transform,false);go.transform.localPosition=c.PositionYaw;go.transform.localRotation=Quaternion.FromToRotation(Vector3.up,c.UpSeed);
@@ -174,7 +231,7 @@ namespace Ringworld.Parallax {
    }
   }
   public void Reposition(){if(disposed)return;foreach(var p in patches.Values)if(p.ColliderRoot!=null){var m=Matrix(p);p.ColliderRoot.transform.position=m.GetColumn(3);p.ColliderRoot.transform.rotation=settings.AxisRotation(settings.Geometry.OrientationRadians-p.Phase);}}
-  void ClearPatches(){foreach(var p in patches.Values)p.Dispose();patches.Clear();pending.Clear();resident=0;lastX=long.MinValue;}
+  void ClearPatches(){foreach(var p in patches.Values)p.Dispose();patches.Clear();foreach(var family in families.Values){family.Patches.Clear();family.HasOutput=false;}pending.Clear();resident=0;lastX=long.MinValue;}
   public void Dispose(){if(disposed)return;disposed=true;Camera.onPreCull-=Render;ClearPatches();foreach(var f in families.Values)f.Dispose();families.Clear();foreach(var p in profiles)p.Assets?.Dispose();if(shader!=null)UnityEngine.Object.Destroy(shader);if(bundle!=null)bundle.Unload(false);if(owner.Current==this)owner.Current=null;}
   internal int[] Counts(){var total=new int[3];foreach(var f in families.Values){var count=f.LastCounts();for(int i=0;i<3;i++)total[i]+=count[i];}return total;}
   internal int CandidatesFor(string id){return patches.Values.Where(p=>p.Profile.Id==id&&p.Ready&&p.Candidates!=null).Sum(p=>p.Candidates.Length);}

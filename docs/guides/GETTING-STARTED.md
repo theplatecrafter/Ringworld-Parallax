@@ -6,6 +6,14 @@ Open Ringworld's Extensions tab and expand Ringworld Parallax. Installed support
 
 Tree trunks have optional simple nearby collision proxies. Grass, flowers and underwater plants have no colliders. Rendering does not alter atmosphere, terrain contact, buoyancy or stock parts.
 
+## KSP graphics settings and startup warnings
+
+Parallax Continued requires **Settings > Graphics > Terrain Detail: High** in the KSP main menu. This is KSP's planetary terrain setting, separate from Ringworld's quality presets: you can keep Ringworld on Slow or lower. The bridge does not change either setting automatically. Keep reflection resolution at 128 to avoid Parallax's separate high-reflection-cost warning.
+
+If Parallax reports that terrain detail is not High, correct that setting and restart KSP. Kopernicus can also warn that terrain detail changed when its remembered setting differs from KSP's. Changing planetary terrain detail can change stock/planet-pack surface elevations; back up saves with vessels landed on those bodies before changing it. Ringworld's cylindrical terrain and saved ring geography do not use this PQS setting.
+
+A Kopernicus **missing textures**, **planetary system failed to load**, or **unsupported KSP version** warning is a different problem. Preserve the complete warning and KSP.log; do not suppress it or reset the save. The [startup warning investigation](../../../Ring%20World%20KSP/docs/developers/STARTUP-WARNINGS.md) records the development instance's actual results.
+
 ## Photo mode
 
 Frame the shot in flight, choose **Photo quality** in the Ringworld panel and enter photo mode. Installed, enabled Parallax scatters use that temporary preset's distance, density and object/generation budgets. Detail is centred on the photo camera and capture waits for generation to finish. New objects are fully visible in the saved photo instead of being caught mid-fade. Frozen preparation uses a small additional generation budget while physics is paused; your gameplay budget is unchanged. Higher presets can take longer to prepare; each scatter profile's distance limit and stock scatter density still apply.

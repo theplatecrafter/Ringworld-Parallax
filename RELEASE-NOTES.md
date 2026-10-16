@@ -1,5 +1,40 @@
 # Ringworld Parallax release notes
 
+## 1.0.1 — artifacts prepared 15 October 2026
+
+### Local metadata review after packaging — 15 October 2026
+
+`NetKAN/NetKAN/RingworldParallax.netkan` now explicitly declares the bridge's direct stock scatter asset requirement (ParallaxContinued-Scatter-Textures >=1.0.0) and KSPTextureLoader >=1.0.36 texture-loading API. These were already required in the manual-pack dependency record; relying on Kopernicus's transitive >=1.0.26 loader bound allowed an older, unvalidated API. This is a metadata correction, not an added payload or base ABI change. Keep NivenRingworld >=1.1.8 and ParallaxContinued >=1.0.3. Source compiles against released base 1.1.8 and 1.1.9 SDKs. Exact upstream 1.0.3 rendering is not newly certified; the installed-stack tests use 1.0.4.
+
+The already prepared 1.0.1 ZIP is not rebuilt by this metadata task. Owner submission remains necessary. See the base metadata compatibility audit for evidence and runtime limits.
+
+
+
+[Player-facing release notes](docs/releases/v1.0.1.md). Local preparation only; the owner handles publication.
+
+Requires NivenRingworld >=1.1.8. Authoritative metadata uses ParallaxContinued >=1.0.3; runtime/asset validation targets 1.0.4, stock scatter/terrain/planet assets 1.0.0, KSPTextureLoader 1.0.36 and KSPBurst/KSPBurst-Lite 1.7.4.11 with upstream Harmony/ModuleManager/Kopernicus requirements. Other upstream layouts/exact minimum runtime combinations are not certified. No upstream redistribution. Clouds, Scattering and Cyla optional; older Parallax conflicts with Continued through upstream metadata. Install into GameData/RingworldParallax.
+
+No base minimum or runtime requirement change; the metadata follow-up above makes existing direct asset/loader requirements explicit. No DLL/type rename, save-format change, terrain-generator change or reset. Existing ring identities, world parameters, resident poses, progress and explicit settings are retained. Stable assembly identities are preserved while file/product versions advance. Standalone archives contain only their own mod and documentation. The Parallax NetKAN correction above is prepared locally for owner submission.
+
+Release validation (15 October 2026): fresh `StartupCompatibility-release-1.1.10-retained.log` passed retained formats 3/4/pre-1.1.8 format 5, repeated migration/options/generator/pose/progress preservation, legacy resident restore/resave and real Flight Map -> Tracking Station -> Space Center transitions with KSPCF. Original retained files were hash-protected. Historical scenario data and a synthetic legacy resident are complementary coverage; this does not certify every old craft/mod binary combination. Current renderer source also passed `FramePerformance-overcast-followup-high.log`, `ParallaxPhoto-performance-4.log` and `Issue7Performance-rendering-final-9.log` before the version-only preparation. Core/placement suites: 143,203/18,050. No serialization or preset-budget changes. Normal DLLs omit test harnesses; archive checks verify versions, CRCs, hashes, paths and dependency exclusions.
+
+### startup settings documentation (15 October 2026)
+
+- Document Parallax Continued's KSP Terrain Detail **High** requirement separately from Ringworld quality presets, plus the related Kopernicus terrain-detail-change warning. The bridge does not force global graphics settings or suppress upstream checks.
+- The shared development instance had Low selected while Kopernicus remembered High. A read-only main-menu observer reproduced Parallax's actual error and checked missing-texture records. See the base [startup investigation](../Ring%20World%20KSP/docs/developers/STARTUP-WARNINGS.md) for corrected-setting validation and save considerations.
+
+Validation: High-setting startup observed 150 menu frames, no active popups and zero Kopernicus missing textures. Normal base binaries were restored. No dependency, asset redistribution, persisted Ringworld preference or bridge ABI change. The development instance global PQS preset changed from Low to High with a backup; the plugin does not enforce that change for players. Required minimums remain base >=1.1.8 and the separately installed Parallax Continued/assets stack.
+
+### scatter culling and allocation (15 October 2026)
+
+- Extract camera frustum planes once and reuse plane/counter arrays. Group patches by scatter family instead of scanning every patch for each family.
+- Reject entire patches only when conservative bounds prove that the existing GPU frustum/range tests cannot retain any candidate. Skip empty-family compute/indirect draws without GPU readbacks in live flight. Preserve object population, biome masks, all three LODs, fade rules and photo-camera routing.
+- Plan incoming cells as value records with cached sort distances; construct patch objects/contact dictionaries only for admitted cells. Keep the previous ordering and population limits. Reuse vessel-position storage and remove per-candidate LINQ closures in tree contact checks; collision ranges remain unchanged and independent of camera culling.
+
+Required base minimum remains 1.1.8 with its existing photo handshake. Parallax Continued >=1.0.3 and the existing separately installed upstream scatter assets/transitive requirements are unchanged. Nothing from upstream is redistributed. Normal builds omit profiling/test hooks; no NetKAN edits, save migration or publication is performed. Runtime comparison checks cover GPU object LOD counts with and without the new patch rejection; photo validation is recorded with the performance evidence.
+
+Validation: four viewing directions retained identical GPU object LOD counts with patch rejection enabled/disabled. `ParallaxPhoto-performance-4.log` passed a real 512-pixel capture (visible LODs 3/24/41), ready population, all eleven preset-budget round trips, world/sky alignment and Resume/Cancel/disabled-extension behaviour. Higher presets were not rendered. Placement/configuration checks: 18,050. See the base [performance report](../Ring%20World%20KSP/docs/developers/FRAME-PERFORMANCE-20261015.md) for timings and limits.
+
 ## 1.0.0 - artifacts prepared October 9, 2026
 
 - Photo mode now waits for the selected preset's scatter population and generates it around the photo camera. Ready objects render fully visible in the scene capture, including new populations that would still be fading into live flight. Resume/Cancel restores custom live distance, density, capacity and generation budgets. Disabled extensions stay disabled; Rotten Potato retains zero density. Temporary photo budgets do not generate physical tree proxies while flight is frozen.
